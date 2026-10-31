@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Search trains{% endblock %}
+{% block content %}
+<h1>Search trains</h1>
+<form method="get" action="{{ url_for('search_page') }}" class="card search" data-form="search" novalidate>
+  <div>
+    <label for="source">From</label>
+    <input id="source" name="source" type="text" value="{{ form.get('source', '') }}" placeholder="Bengaluru" required>
+  </div>
+  <button type="button" class="link swap" id="swap-stations" aria-label="Swap From and To stations">Swap</button>
+  <div>
+    <label for="destination">To</label>
+    <input id="destination" name="destination" type="text" value="{{ form.get('destination', '') }}" placeholder="Chennai" required>
+  </div>
+  <div>
+    <label for="date">Travel date</label>
+    <input id="date" name="date" type="date" value="{{ form.get('date', '') }}" required>
+  </div>
+  <button type="submit">Search trains</button>
+</form>
+
+{% if submitted and not errors %}
+  {% if trains %}
+    <h2>{{ trains|length }} train{{ 's' if trains|length != 1 }} found</h2>
+    {% for t in trains %}
+      <article class="card train">
+        <header>
+          <h3>{{ t.name }} <span class="muted">{{ t.train_no }}</span></h3>
+          <p>{{ t.source }} to {{ t.destination }} on {{ t.travel_date.strftime('%d %b %Y') }}</p>
+        </header>
+        <p class="times">Departs {{ t.departure_time.strftime('%H:%M') }}, arrives {{ t.arrival_time.strftime('%H:%M') }}</p>
+        <ul class="classes">
+          {% for c in t.classes %}
+            <li><strong>{{ c.class_code }}</strong> Rs. {{ '%.2f'|format(c.fare) }}</li>
+          {% endfor %}
+        </ul>
+      </article>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No trains found for this route and date. Try another date or check the station names.</p>
+  {% endif %}
+{% endif %}
+{% endblock %}
