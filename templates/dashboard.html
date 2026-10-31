@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1>Welcome, {{ session.user_name }}</h1>
+<div class="card">
+  <p>Find a train for your journey.</p>
+  <a class="button" href="{{ url_for('search_page') }}">Search trains</a>
+</div>
+{% endblock %}
