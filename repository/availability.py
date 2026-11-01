@@ -29,6 +29,10 @@ def get_seat_availability(train_id, travel_date, class_code):
                 OR (
                     b.status = 'PROVISIONAL'
                     AND b.held_until > NOW()
+                    AND COALESCE(
+                        b.allocation_status,
+                        'CONFIRMED'
+                    ) = 'CONFIRMED'
                 )
             )
         WHERE t.id = %s
