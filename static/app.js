@@ -1,3 +1,4 @@
+
 /* Client-side helpers for the RRS pages.
  * The server (Python) is always the final validator; this only gives faster feedback.
  * Forms opt in with data-form="register" | "login" | "search".
@@ -41,31 +42,70 @@
   var validators = {
     register: function (form) {
       var errors = [];
-      if (!value(form, "name")) errors.push(["name", "Enter your name."]);
-      if (!EMAIL_RE.test(value(form, "email"))) errors.push(["email", "Enter a valid email address."]);
-      if (form.elements.password.value.length < MIN_PASSWORD) {
-        errors.push(["password", "Password must be at least " + MIN_PASSWORD + " characters."]);
+
+      if (!value(form, "name")) {
+        errors.push(["name", "Enter your name."]);
       }
+
+      if (!EMAIL_RE.test(value(form, "email"))) {
+        errors.push(["email", "Enter a valid email address."]);
+      }
+
+      if (form.elements.password.value.length < MIN_PASSWORD) {
+        errors.push([
+          "password",
+          "Password must be at least " + MIN_PASSWORD + " characters."
+        ]);
+      }
+
       return errors;
     },
+
     login: function (form) {
       var errors = [];
-      if (!EMAIL_RE.test(value(form, "email"))) errors.push(["email", "Enter a valid email address."]);
-      if (!form.elements.password.value) errors.push(["password", "Enter your password."]);
+
+      if (!EMAIL_RE.test(value(form, "email"))) {
+        errors.push(["email", "Enter a valid email address."]);
+      }
+
+      if (!form.elements.password.value) {
+        errors.push(["password", "Enter your password."]);
+      }
+
       return errors;
     },
+
     search: function (form) {
       var errors = [];
       var source = value(form, "source");
       var destination = value(form, "destination");
       var date = value(form, "date");
-      if (!source) errors.push(["source", "Enter a source station."]);
-      if (!destination) errors.push(["destination", "Enter a destination station."]);
-      if (source && destination && source.toLowerCase() === destination.toLowerCase()) {
-        errors.push(["destination", "Source and destination must be different."]);
+
+      if (!source) {
+        errors.push(["source", "Enter a source station."]);
       }
-      if (!date) errors.push(["date", "Choose a travel date."]);
-      else if (date < todayLocal()) errors.push(["date", "Travel date cannot be in the past."]);
+
+      if (!destination) {
+        errors.push(["destination", "Enter a destination station."]);
+      }
+
+      if (
+        source &&
+        destination &&
+        source.toLowerCase() === destination.toLowerCase()
+      ) {
+        errors.push([
+          "destination",
+          "Source and destination must be different."
+        ]);
+      }
+
+      if (!date) {
+        errors.push(["date", "Choose a travel date."]);
+      } else if (date < todayLocal()) {
+        errors.push(["date", "Travel date cannot be in the past."]);
+      }
+
       return errors;
     }
   };
@@ -78,17 +118,21 @@
       Array.prototype.forEach.call(form.elements, function (el) {
         if (el.id) clearError(el);
       });
+
       var errors = validate(form);
+
       if (errors.length) {
         event.preventDefault();
+
         errors.forEach(function (pair) {
           showError(form.elements[pair[0]], pair[1]);
         });
+
         form.elements[errors[0][0]].focus();
       }
     });
 
-    // Clear a field's message as soon as the user edits it
+    // Clear a field's message as soon as the user edits it.
     form.addEventListener("input", function (event) {
       if (event.target.id) clearError(event.target);
     });
@@ -97,6 +141,7 @@
   function attachPasswordToggle(button) {
     var input = document.getElementById(button.dataset.toggle);
     if (!input) return;
+
     button.addEventListener("click", function () {
       var show = input.type === "password";
       input.type = show ? "text" : "password";
@@ -107,9 +152,13 @@
   function setupSearchPage(form) {
     var date = form.elements.date;
     date.min = todayLocal();
-    if (!date.value) date.value = todayLocal();
+
+    if (!date.value) {
+      date.value = todayLocal();
+    }
 
     var swap = document.getElementById("swap-stations");
+
     if (swap) {
       swap.addEventListener("click", function () {
         var from = form.elements.source;
@@ -121,10 +170,87 @@
     }
   }
 
+  /* Seat availability lookup for RRS-F-020. */
+  function setupAvailability() {
+    var form = document.getElementById("availability-form");
+    var result = document.getElementById("availability-result");
+
+    if (!form || !result) return;
+
+    var dateInput = form.elements.date;
+
+    if (dateInput) {
+      dateInput.min = todayLocal();
+
+      if (!dateInput.value) {
+        dateInput.value = todayLocal();
+      }
+    }
+
+    form.addEventListener("submit", async function (event) {
+      event.preventDefault();
+
+      var trainId = form.elements.train_id.value.trim();
+      var travelDate = form.elements.date.value;
+      var classCode = form.elements.class.value;
+
+      if (!trainId || !travelDate || !classCode) {
+        result.textContent = "Please enter all required details.";
+        return;
+      }
+
+      if (travelDate < todayLocal()) {
+        result.textContent = "Travel date cannot be in the past.";
+        return;
+      }
+
+      result.textContent = "Checking seat availability...";
+
+      try {
+        var params = new URLSearchParams({
+          train_id: trainId,
+          date: travelDate,
+          class: classCode
+        });
+
+        var response = await fetch(
+          "/api/availability?" + params.toString()
+        );
+
+        var data = await response.json();
+
+        if (!response.ok) {
+          result.textContent =
+            data.error || "Unable to retrieve seat availability.";
+          return;
+        }
+
+        result.textContent =
+          data.train_name + " (" + data.train_no + ") - " +
+          data.class_code + ": " + data.available_seats +
+          " seats available out of " + data.total_seats + ".";
+
+      } catch (error) {
+        result.textContent =
+          "Unable to connect to the server. Please try again.";
+      }
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     document.querySelectorAll("form[data-form]").forEach(attachValidation);
-    document.querySelectorAll("button[data-toggle]").forEach(attachPasswordToggle);
+
+    document.querySelectorAll("button[data-toggle]").forEach(
+      attachPasswordToggle
+    );
+
     var searchForm = document.querySelector('form[data-form="search"]');
-    if (searchForm) setupSearchPage(searchForm);
+
+    if (searchForm) {
+      setupSearchPage(searchForm);
+    }
+
+    // Initialize seat availability functionality.
+    setupAvailability();
   });
 })();

@@ -1,10 +1,22 @@
+
 """Flask backend API and web UI for the Railway Reservation System."""
+
 from functools import wraps
 
-from flask import Flask, flash, redirect, render_template, request, session, url_for
+from flask import (
+    Flask,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 
 from config import Config
 from modules import auth, search
+from modules.allocation import check_availability
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -32,33 +44,45 @@ def home():
 def register():
     if request.method == "POST":
         user_id, errors = auth.register_user(
-            request.form.get("name"), request.form.get("email"), request.form.get("password")
+            request.form.get("name"),
+            request.form.get("email"),
+            request.form.get("password"),
         )
         if errors:
             for message in errors:
                 flash(message, "error")
             return render_template("register.html", form=request.form), 400
+
         flash("Account created. Log in to continue.", "success")
         return redirect(url_for("login"))
+
     return render_template("register.html", form={})
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        user = auth.authenticate(request.form.get("email"), request.form.get("password"))
+        user = auth.authenticate(
+            request.form.get("email"),
+            request.form.get("password"),
+        )
+
         if user is None:
             flash("Email or password is incorrect.", "error")
             return render_template("login.html", form=request.form), 401
+
         session.clear()
         session["user_id"] = user["id"]
         session["user_name"] = user["name"]
         session["role"] = user["role"]
+
         nxt = request.args.get("next", "")
-        # Only allow same-site relative redirects
+        # Only allow same-site relative redirects.
         if nxt.startswith("/") and not nxt.startswith("//"):
             return redirect(nxt)
+
         return redirect(url_for("dashboard"))
+
     return render_template("login.html", form={})
 
 
@@ -85,9 +109,12 @@ def search_page():
 
     trains, errors = [], []
     if submitted:
-        trains, errors = search.search_trains(source, destination, travel_date)
+        trains, errors = search.search_trains(
+            source, destination, travel_date
+        )
         for message in errors:
             flash(message, "error")
+
     return render_template(
         "search.html",
         trains=trains,
@@ -95,6 +122,57 @@ def search_page():
         errors=errors,
         form=request.args,
     )
+
+
+# Seat availability page
+@app.route("/availability", methods=["GET"])
+@login_required
+def availability_page():
+    return render_template("availability.html")
+
+
+# Seat availability API
+@app.route("/api/availability", methods=["GET"])
+@login_required
+def seat_availability():
+    train_id = request.args.get("train_id")
+    travel_date = request.args.get("date")
+    class_code = request.args.get("class")
+
+    if not train_id or not train_id.isdigit():
+        return jsonify({
+            "error": "Valid train_id is required."
+        }), 400
+
+    if not travel_date or not class_code:
+        return jsonify({
+            "error": "Date and class are required."
+        }), 400
+
+    try:
+        result = check_availability(
+            int(train_id),
+            travel_date,
+            class_code,
+        )
+
+        if result is None:
+            return jsonify({
+                "error": "Train schedule or class not found."
+            }), 404
+
+        return jsonify(result), 200
+
+    except ValueError as error:
+        return jsonify({
+            "error": str(error)
+        }), 400
+
+    except Exception:
+        app.logger.exception("Availability lookup failed")
+        return jsonify({
+            "error": "Unable to retrieve seat availability."
+        }), 500
 
 
 if __name__ == "__main__":
