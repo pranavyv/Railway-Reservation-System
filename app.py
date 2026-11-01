@@ -15,12 +15,14 @@ from flask import (
 )
 
 from config import Config
-from modules import auth, search
+from modules import auth, search, payment
 from modules.allocation import check_availability
 
 app = Flask(__name__)
 app.config.from_object(Config)
+
 from modules.pnr_routes import pnr_bp  # noqa: E402
+
 app.register_blueprint(pnr_bp)
 
 
@@ -174,6 +176,49 @@ def seat_availability():
         app.logger.exception("Availability lookup failed")
         return jsonify({
             "error": "Unable to retrieve seat availability."
+        }), 500
+
+
+# Mock payment API
+@app.route("/api/pay", methods=["POST"])
+@login_required
+def pay_booking():
+    """Process a mock payment for the logged-in user's booking."""
+
+    data = request.get_json(silent=True) or {}
+    booking_id = data.get("booking_id")
+    payment_outcome = data.get("payment_outcome", "SUCCESS")
+
+    if (
+        not isinstance(booking_id, int)
+        or isinstance(booking_id, bool)
+        or booking_id <= 0
+    ):
+        return jsonify({
+            "error": "Valid booking_id is required."
+        }), 400
+
+    try:
+        result = payment.process_payment(
+            user_id=session["user_id"],
+            booking_id=booking_id,
+            payment_outcome=payment_outcome,
+        )
+
+        if result["status"] in {"FAILED", "TIMEOUT"}:
+            return jsonify(result), 402
+
+        return jsonify(result), 200
+
+    except ValueError as error:
+        return jsonify({
+            "error": str(error)
+        }), 400
+
+    except Exception:
+        app.logger.exception("Payment processing failed")
+        return jsonify({
+            "error": "Unable to process payment."
         }), 500
 
 
