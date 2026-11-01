@@ -1,6 +1,9 @@
-﻿"""Mock payment processing for railway bookings."""
+﻿
+"""Mock payment processing for railway bookings."""
 
 from uuid import uuid4
+
+from modules import pnr as pnr_module
 
 
 VALID_OUTCOMES = {"SUCCESS", "FAILED", "TIMEOUT"}
@@ -26,9 +29,14 @@ def process_payment(user_id, booking_id, payment_outcome="SUCCESS", repo=None):
 
     transaction_ref = f"MOCK-{uuid4().hex.upper()}"
 
-    return repo.record_payment(
+    result = repo.record_payment(
         user_id=user_id,
         booking_id=booking_id,
         transaction_ref=transaction_ref,
         status=outcome,
     )
+
+    if result.get("booking_status") == "CONFIRMED":
+        result["pnr"] = pnr_module.assign_pnr(booking_id)
+
+    return result

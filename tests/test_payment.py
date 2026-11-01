@@ -1,6 +1,7 @@
-﻿"""Tests for mock payment processing."""
+﻿
+"""Tests for mock payment processing."""
 
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -12,18 +13,36 @@ def mock_repo():
     return Mock()
 
 
-def test_successful_payment(mock_repo):
+@patch("modules.payment.pnr_module.assign_pnr", return_value="1234567890")
+def test_successful_payment(mock_pnr, mock_repo):
     mock_repo.record_payment.return_value = {
         "booking_id": 1,
         "status": "SUCCESS",
-        "pnr": "RRS1234567890",
+        "booking_status": "CONFIRMED",
+        "pnr": None,
     }
 
     result = process_payment(1, 1, "SUCCESS", mock_repo)
 
     assert result["status"] == "SUCCESS"
-    assert result["pnr"] == "RRS1234567890"
+    assert result["pnr"] == "1234567890"
     mock_repo.record_payment.assert_called_once()
+    mock_pnr.assert_called_once_with(1)
+
+
+@patch("modules.payment.pnr_module.assign_pnr")
+def test_rac_booking_gets_no_pnr(mock_pnr, mock_repo):
+    mock_repo.record_payment.return_value = {
+        "booking_id": 1,
+        "status": "SUCCESS",
+        "booking_status": "RAC",
+        "pnr": None,
+    }
+
+    result = process_payment(1, 1, "SUCCESS", mock_repo)
+
+    assert result["pnr"] is None
+    mock_pnr.assert_not_called()
 
 
 @pytest.mark.parametrize("outcome", ["FAILED", "TIMEOUT"])
@@ -31,16 +50,25 @@ def test_unsuccessful_payment(mock_repo, outcome):
     mock_repo.record_payment.return_value = {
         "booking_id": 1,
         "status": outcome,
+        "booking_status": "CANCELLED",
         "pnr": None,
     }
 
     result = process_payment(1, 1, outcome, mock_repo)
 
     assert result["status"] == outcome
+    assert result["booking_status"] == "CANCELLED"
     assert result["pnr"] is None
 
 
 def test_transaction_reference_generated(mock_repo):
+    mock_repo.record_payment.return_value = {
+        "booking_id": 1,
+        "status": "SUCCESS",
+        "booking_status": "RAC",
+        "pnr": None,
+    }
+
     process_payment(1, 1, "SUCCESS", mock_repo)
 
     kwargs = mock_repo.record_payment.call_args.kwargs
@@ -67,6 +95,13 @@ def test_invalid_payment_outcome(mock_repo):
 
 
 def test_payment_outcome_is_case_insensitive(mock_repo):
+    mock_repo.record_payment.return_value = {
+        "booking_id": 1,
+        "status": "SUCCESS",
+        "booking_status": "RAC",
+        "pnr": None,
+    }
+
     process_payment(1, 1, "success", mock_repo)
 
     kwargs = mock_repo.record_payment.call_args.kwargs

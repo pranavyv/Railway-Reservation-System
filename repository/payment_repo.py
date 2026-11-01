@@ -1,15 +1,12 @@
 
 """Database operations for mock railway payments."""
 
-from uuid import uuid4
-
 from db import get_cursor
 
 
 def record_payment(user_id, booking_id, transaction_ref, status):
-    """Record a mock payment and confirm the booking only on success."""
+    """Record a mock payment and update the provisional booking."""
 
-    # Validate payment status before database operations.
     if status not in {"SUCCESS", "FAILED", "TIMEOUT"}:
         raise ValueError("Invalid payment status.")
 
@@ -19,7 +16,7 @@ def record_payment(user_id, booking_id, transaction_ref, status):
     with get_cursor(commit=True) as cursor:
         cursor.execute(
             """
-            SELECT id, status, fare, held_until,
+            SELECT id, status, fare, held_until, allocation_status,
                    (held_until > NOW()) AS hold_active
             FROM bookings
             WHERE id = %s AND user_id = %s
@@ -36,48 +33,33 @@ def record_payment(user_id, booking_id, transaction_ref, status):
             raise ValueError("Booking is no longer awaiting payment.")
 
         if not booking["hold_active"]:
-            raise ValueError(
-                "Your booking hold has expired. Please book again."
-            )
+            status = "TIMEOUT"
 
         cursor.execute(
-            """
-            INSERT INTO payments (
-                booking_id, transaction_ref, status, amount
-            )
-            VALUES (%s, %s, %s, %s)
-            """,
-            (
-                booking_id,
-                transaction_ref,
-                status,
-                booking["fare"],
-            ),
+            "INSERT INTO payments (booking_id, transaction_ref, status, amount) "
+            "VALUES (%s, %s, %s, %s)",
+            (booking_id, transaction_ref, status, booking["fare"]),
         )
 
-        pnr = None
-
         if status == "SUCCESS":
-            pnr = f"RRS{uuid4().hex[:10].upper()}"
+            new_status = booking["allocation_status"] or "CONFIRMED"
+        else:
+            new_status = "CANCELLED"
 
-            cursor.execute(
-                """
-                UPDATE bookings
-                SET status = 'CONFIRMED', pnr = %s
-                WHERE id = %s AND status = 'PROVISIONAL'
-                """,
-                (pnr, booking_id),
-            )
-
-            if cursor.rowcount != 1:
-                raise ValueError("Unable to confirm this booking.")
+        cursor.execute(
+            "UPDATE bookings SET status = %s WHERE id = %s AND status = 'PROVISIONAL'",
+            (new_status, booking_id),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("Unable to update this booking.")
 
         return {
             "booking_id": booking_id,
             "transaction_ref": transaction_ref,
             "status": status,
+            "booking_status": new_status,
             "amount": booking["fare"],
-            "pnr": pnr,
+            "pnr": None,
         }
 
 
