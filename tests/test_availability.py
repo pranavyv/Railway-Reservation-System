@@ -1,6 +1,7 @@
 
 """Tests for seat availability business logic."""
 
+from datetime import date, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -8,14 +9,16 @@ import pytest
 from modules.allocation import check_availability
 
 
+TRAVEL_DATE = (date.today() + timedelta(days=30)).isoformat()
+
 MOCK_RESULT = {
     "train_id": 1,
     "train_no": "10001",
     "train_name": "Silicon Express",
-    "travel_date": "2026-11-15",
+    "travel_date": TRAVEL_DATE,
     "class_code": "3A",
     "total_seats": 64,
-    "allocated_seats": 20
+    "allocated_seats": 20,
 }
 
 
@@ -23,7 +26,7 @@ MOCK_RESULT = {
 def test_available_seats(mock_query):
     mock_query.return_value = MOCK_RESULT
 
-    result = check_availability(1, "2026-11-15", "3A")
+    result = check_availability(1, TRAVEL_DATE, "3A")
 
     assert result["total_seats"] == 64
     assert result["allocated_seats"] == 20
@@ -37,7 +40,7 @@ def test_fully_booked(mock_query):
     data["allocated_seats"] = 64
     mock_query.return_value = data
 
-    result = check_availability(1, "2026-11-15", "3A")
+    result = check_availability(1, TRAVEL_DATE, "3A")
 
     assert result["available_seats"] == 0
     assert result["status"] == "FULL"
@@ -45,18 +48,18 @@ def test_fully_booked(mock_query):
 
 def test_invalid_train_id():
     with pytest.raises(ValueError):
-        check_availability(0, "2026-11-15", "3A")
+        check_availability(0, TRAVEL_DATE, "3A")
 
 
 def test_invalid_class():
     with pytest.raises(ValueError):
-        check_availability(1, "2026-11-15", "1A")
+        check_availability(1, TRAVEL_DATE, "1A")
 
 
 @patch("modules.allocation.get_seat_availability")
 def test_train_not_found(mock_query):
     mock_query.return_value = None
 
-    result = check_availability(1, "2026-11-15", "3A")
+    result = check_availability(1, TRAVEL_DATE, "3A")
 
     assert result is None
