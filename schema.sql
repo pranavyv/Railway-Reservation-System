@@ -1,3 +1,4 @@
+
 -- Railway Reservation System: Supabase (PostgreSQL) schema
 -- Run in the Supabase SQL editor, or: psql "$DATABASE_URL" -f schema.sql
 -- Shared by the whole team: agree on column names before changing them.
@@ -57,6 +58,8 @@ CREATE TABLE IF NOT EXISTS bookings (
     berth_preference TEXT,
     fare            NUMERIC(10,2) NOT NULL,
     held_until      TIMESTAMPTZ,                       -- provisional hold expiry (RRS-F-021)
+    allocation_status TEXT
+                    CHECK (allocation_status IN ('CONFIRMED', 'RAC', 'WAITLISTED')),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -89,3 +92,18 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_trains_route      ON trains (lower(source), lower(destination));
 CREATE INDEX IF NOT EXISTS idx_schedules_date    ON schedules (travel_date);
 CREATE INDEX IF NOT EXISTS idx_bookings_schedule ON bookings (schedule_id, class_code, status);
+
+-- Migration for databases where the bookings table already exists.
+-- Safe to run when the column has already been added.
+ALTER TABLE bookings
+ADD COLUMN IF NOT EXISTS allocation_status TEXT
+CHECK (allocation_status IN ('CONFIRMED', 'RAC', 'WAITLISTED'));
+
+-- RRS-F-042: refund recorded for each cancelled booking
+CREATE TABLE IF NOT EXISTS refunds (
+    id             INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    booking_id     INTEGER       NOT NULL UNIQUE REFERENCES bookings(id),
+    amount         NUMERIC(10,2) NOT NULL CHECK (amount >= 0),
+    refund_percent INTEGER       NOT NULL CHECK (refund_percent BETWEEN 0 AND 100),
+    created_at     TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
