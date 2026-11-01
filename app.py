@@ -17,6 +17,7 @@ from flask import (
 from config import Config
 from modules import auth, search
 from modules.allocation import check_availability
+from modules.reservations import book_ticket, cancel_ticket, lookup_pnr
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -173,6 +174,76 @@ def seat_availability():
         return jsonify({
             "error": "Unable to retrieve seat availability."
         }), 500
+
+
+# Booking creation, PNR tracking and cancellation APIs.
+@app.route("/api/bookings", methods=["POST"])
+@login_required
+def create_booking_api():
+    data = request.get_json(silent=True) if request.is_json else request.form
+    booking, errors, status_code = book_ticket(session["user_id"], data or {})
+    if not request.is_json:
+        if errors:
+            for message in errors:
+                flash(message, "error")
+            return redirect(url_for("search_page"))
+        flash(f"Booking created with PNR {booking['pnr']} ({booking['status']}).", "success")
+        return redirect(url_for("pnr_page", pnr=booking["pnr"]))
+    if errors:
+        return jsonify({"errors": errors}), status_code
+    return jsonify(booking), status_code
+
+
+@app.route("/pnr", methods=["GET"])
+@login_required
+def pnr_page():
+    pnr = request.args.get("pnr", "").strip()
+    booking = None
+    errors = []
+    if pnr:
+        booking, errors, _ = lookup_pnr(pnr)
+        # Passengers may only view their own booking details.
+        if booking:
+            from repository.reservation_repo import get_booking_by_pnr
+            # ownership is checked by a dedicated repository query below.
+            from repository.reservation_repo import booking_belongs_to_user
+            if not booking_belongs_to_user(pnr, session["user_id"]):
+                booking = None
+                errors = ["No booking was found for that PNR."]
+    return render_template("pnr.html", booking=booking, errors=errors, pnr=pnr)
+
+
+@app.route("/api/pnr/<pnr>", methods=["GET"])
+@login_required
+def pnr_lookup_api(pnr):
+    booking, errors, status_code = lookup_pnr(pnr)
+    if errors:
+        return jsonify({"errors": errors}), status_code
+    from repository.reservation_repo import booking_belongs_to_user
+    if not booking_belongs_to_user(pnr, session["user_id"]):
+        return jsonify({"errors": ["No booking was found for that PNR."]}), 404
+    return jsonify(booking), 200
+
+
+@app.route("/api/bookings/<pnr>/cancel", methods=["POST"])
+@login_required
+def cancel_booking_api(pnr):
+    data = request.get_json(silent=True) or request.form
+    confirmed = str(data.get("confirm", "")).lower() in {"true", "1", "yes", "on"}
+    result, errors, status_code = cancel_ticket(pnr, session["user_id"], confirmed)
+    if not request.is_json:
+        if errors:
+            for message in errors:
+                flash(message, "error")
+        else:
+            flash(
+                f"Booking cancelled. Refund recorded: ₹{result['refund_amount']} ({result['refund_percent']}%).",
+                "success",
+            )
+        return redirect(url_for("pnr_page", pnr=pnr))
+    if errors:
+        return jsonify({"errors": errors}), status_code
+    return jsonify(result), 200
 
 
 if __name__ == "__main__":

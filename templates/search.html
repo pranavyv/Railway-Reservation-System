@@ -31,7 +31,29 @@
         <p class="times">Departs {{ t.departure_time.strftime('%H:%M') }}, arrives {{ t.arrival_time.strftime('%H:%M') }}</p>
         <ul class="classes">
           {% for c in t.classes %}
-            <li><strong>{{ c.class_code }}</strong> Rs. {{ '%.2f'|format(c.fare) }}</li>
+            <li>
+              <strong>{{ c.class_code }}</strong> Rs. {{ '%.2f'|format(c.fare) }}
+              <details>
+                <summary>Book this class</summary>
+                <form method="post" action="{{ url_for('create_booking_api') }}" class="booking-form">
+                  <input type="hidden" name="schedule_id" value="{{ t.schedule_id }}">
+                  <input type="hidden" name="class_code" value="{{ c.class_code }}">
+                  <label>Passenger name <input name="passenger_name" required maxlength="100"></label>
+                  <label>Age <input name="passenger_age" type="number" min="1" max="120" required></label>
+                  <label>Gender
+                    <select name="passenger_gender" required>
+                      <option value="">Choose</option><option>Female</option><option>Male</option><option>Other</option>
+                    </select>
+                  </label>
+                  <label>Berth preference
+                    <select name="berth_preference">
+                      <option value="">No preference</option><option>Lower</option><option>Middle</option><option>Upper</option><option>Side Lower</option><option>Side Upper</option>
+                    </select>
+                  </label>
+                  <button type="submit">Confirm booking</button>
+                </form>
+              </details>
+            </li>
           {% endfor %}
         </ul>
       </article>

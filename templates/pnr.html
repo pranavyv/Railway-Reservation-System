@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}PNR Tracking | Railway Reservation{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Track your booking</h1>
+  <form method="get" action="{{ url_for('pnr_page') }}">
+    <label for="pnr">9-digit PNR</label>
+    <input id="pnr" name="pnr" inputmode="numeric" pattern="[0-9]{9}" maxlength="9" value="{{ pnr }}" required>
+    <button type="submit">Find booking</button>
+  </form>
+  {% for error in errors %}<p class="flash error" role="alert">{{ error }}</p>{% endfor %}
+  {% if booking %}
+    <h2>Booking details</h2>
+    <dl>
+      <dt>PNR</dt><dd>{{ booking.pnr }}</dd>
+      <dt>Status</dt><dd>{{ booking.status }}</dd>
+      <dt>Passenger</dt><dd>{{ booking.passenger_name }}</dd>
+      <dt>Train</dt><dd>{{ booking.train_name }} ({{ booking.train_no }})</dd>
+      <dt>Route</dt><dd>{{ booking.source }} to {{ booking.destination }}</dd>
+      <dt>Travel date</dt><dd>{{ booking.travel_date }}</dd>
+      <dt>Class</dt><dd>{{ booking.class_code }}</dd>
+      <dt>Fare</dt><dd>₹{{ booking.fare }}</dd>
+    </dl>
+    {% if booking.status not in ['CANCELLED'] %}
+      <form method="post" action="{{ url_for('cancel_booking_api', pnr=booking.pnr) }}" onsubmit="return confirm('Are you sure you want to cancel this booking?');">
+        <input type="hidden" name="confirm" value="true">
+        <button type="submit">Cancel booking</button>
+      </form>
+    {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

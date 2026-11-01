@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS schedule_classes (
 -- Booking / Allocation / PNR (Narendra and Yashash)
 CREATE TABLE IF NOT EXISTS bookings (
     id              INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    pnr             TEXT UNIQUE,                       -- set only when CONFIRMED
+    pnr             TEXT UNIQUE,                       -- unique tracking reference for every accepted booking
     user_id         INTEGER NOT NULL REFERENCES users(id),
     schedule_id     INTEGER NOT NULL REFERENCES schedules(id),
     class_code      TEXT    NOT NULL,
@@ -75,6 +75,17 @@ CREATE TABLE IF NOT EXISTS cancellation_policy (
     id                 INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     min_hours_before   INTEGER NOT NULL,               -- applies when hours_left >= this value
     refund_percent     INTEGER NOT NULL CHECK (refund_percent BETWEEN 0 AND 100)
+);
+
+-- RRS-F-042: durable refund calculation record; one refund per booking.
+CREATE TABLE IF NOT EXISTS refunds (
+    id             INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    booking_id     INTEGER NOT NULL UNIQUE REFERENCES bookings(id),
+    amount         NUMERIC(10,2) NOT NULL CHECK (amount >= 0),
+    refund_percent INTEGER NOT NULL CHECK (refund_percent BETWEEN 0 AND 100),
+    status         TEXT NOT NULL DEFAULT 'RECORDED'
+                   CHECK (status IN ('RECORDED', 'PROCESSED', 'FAILED')),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- PRJ-SR-006: admin action audit trail
