@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}PNR status | Railway Reservation{% endblock %}
+{% block content %}
+<section class="pnr-page">
+  <h1>PNR status and cancellation</h1>
+
+  <form id="pnr-form" novalidate>
+    <label for="pnr">PNR (10 digits)</label>
+    <input id="pnr" name="pnr" inputmode="numeric" maxlength="10" autocomplete="off" required>
+    <button type="submit">Check status</button>
+  </form>
+
+  <p id="pnr-message" role="status" aria-live="polite"></p>
+  <dl id="pnr-details" hidden></dl>
+
+  <div id="cancel-box" hidden>
+    <p id="refund-info"></p>
+    <button type="button" id="cancel-btn">Cancel ticket</button>
+  </div>
+</section>
+
+<script>
+(function () {
+  var form = document.getElementById("pnr-form");
+  var input = document.getElementById("pnr");
+  var msg = document.getElementById("pnr-message");
+  var details = document.getElementById("pnr-details");
+  var box = document.getElementById("cancel-box");
+  var info = document.getElementById("refund-info");
+  var cancelBtn = document.getElementById("cancel-btn");
+  var currentPnr = null;
+
+  var FIELDS = [
+    ["pnr", "PNR"], ["status", "Status"], ["train", "Train"], ["route", "Route"],
+    ["travel_date", "Travel date"], ["departure_time", "Departs"],
+    ["class_code", "Class"], ["passenger_name", "Passenger"], ["fare", "Fare (Rs)"]
+  ];
+
+  function say(text, ok) {
+    msg.textContent = text;
+    msg.className = "flash " + (ok ? "success" : "error");
+  }
+
+  function render(b) {
+    var view = Object.assign({}, b, {
+      train: b.train_name + " (" + b.train_no + ")",
+      route: b.source + " to " + b.destination
+    });
+    details.textContent = "";
+    FIELDS.forEach(function (f) {
+      var dt = document.createElement("dt");
+      dt.textContent = f[1];
+      var dd = document.createElement("dd");
+      dd.textContent = view[f[0]];
+      details.appendChild(dt);
+      details.appendChild(dd);
+    });
+    details.hidden = false;
+  }
+
+  async function lookup(pnr) {
+    box.hidden = true;
+    details.hidden = true;
+    var res = await fetch("/api/pnr/" + encodeURIComponent(pnr));
+    var data = await res.json();
+    if (!res.ok) { say(data.error || "Lookup failed.", false); return; }
+    currentPnr = data.pnr;
+    say("Booking found.", true);
+    render(data);
+    if (data.status === "CANCELLED") return;
+    var prev = await fetch("/api/cancel/preview?pnr=" + encodeURIComponent(pnr));
+    var p = await prev.json();
+    if (prev.ok) {
+      info.textContent = "If you cancel now you get Rs " + p.refund_amount.toFixed(2) +
+        " back (" + p.refund_percent + "% of the fare).";
+      box.hidden = false;
+    }
+  }
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    var pnr = input.value.trim();
+    if (!/^\d{10}$/.test(pnr)) { say("Enter a 10-digit PNR.", false); return; }
+    lookup(pnr).catch(function () { say("Unable to reach the server.", false); });
+  });
+
+  cancelBtn.addEventListener("click", async function () {
+    if (!currentPnr) return;
+    if (!window.confirm("Cancel this ticket? This cannot be undone.")) return;
+    try {
+      var res = await fetch("/api/cancel", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({pnr: currentPnr, confirm: true})
+      });
+      var data = await res.json();
+      if (!res.ok) { say(data.error || "Cancellation failed.", false); return; }
+      await lookup(currentPnr);
+      say("Ticket cancelled. Refund: Rs " + data.refund_amount.toFixed(2) +
+          " (" + data.refund_percent + "%).", true);
+    } catch (e) {
+      say("Unable to reach the server.", false);
+    }
+  });
+})();
+</script>
+{% endblock %}
