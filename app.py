@@ -20,6 +20,8 @@ from modules.allocation import check_availability
 
 app = Flask(__name__)
 app.config.from_object(Config)
+from modules.pnr_routes import pnr_bp  # noqa: E402
+app.register_blueprint(pnr_bp)
 
 
 def login_required(view):

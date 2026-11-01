@@ -98,3 +98,12 @@ CREATE INDEX IF NOT EXISTS idx_bookings_schedule ON bookings (schedule_id, class
 ALTER TABLE bookings
 ADD COLUMN IF NOT EXISTS allocation_status TEXT
 CHECK (allocation_status IN ('CONFIRMED', 'RAC', 'WAITLISTED'));
+
+-- RRS-F-042: refund recorded for each cancelled booking
+CREATE TABLE IF NOT EXISTS refunds (
+    id             INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    booking_id     INTEGER       NOT NULL UNIQUE REFERENCES bookings(id),
+    amount         NUMERIC(10,2) NOT NULL CHECK (amount >= 0),
+    refund_percent INTEGER       NOT NULL CHECK (refund_percent BETWEEN 0 AND 100),
+    created_at     TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
