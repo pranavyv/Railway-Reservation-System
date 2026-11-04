@@ -44,3 +44,25 @@ a { color: var(--rail); }
 input[aria-invalid="true"] { border-color: var(--err-ink); border-width: 2px; }
 button.toggle { display: block; margin-top: .4rem; font-size: .92rem; color: var(--rail); }
 button.swap { margin: 0 0 .35rem; color: var(--rail); align-self: end; justify-self: start; }
+
+/* Admin reports and tables (Issue #18) */
+.admin-badge { background: #f2a900; color: #14213d !important; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: 700; font-size: 0.85rem; }
+.topbar-link { color: #fff !important; cursor: pointer; }
+.metrics-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 1.5rem; }
+.metric-card { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 1rem; text-align: center; }
+.metric-card .metric-val { font-size: 1.6rem; font-weight: 700; color: var(--rail); margin: 0.35rem 0; }
+.metric-card .metric-title { font-size: 0.85rem; font-weight: 600; text-transform: uppercase; color: #6b7785; }
+.metric-card .metric-sub { font-size: 0.82rem; color: #46515e; }
+.data-table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.data-table th, .data-table td { padding: 0.65rem 0.85rem; text-align: left; border-bottom: 1px solid var(--line); font-size: 0.92rem; }
+.data-table th { background: var(--wash); font-weight: 600; color: var(--ink); }
+.data-table tr:hover { background: #f8fafc; }
+.badge { display: inline-block; padding: 0.2rem 0.45rem; border-radius: 4px; font-size: 0.78rem; font-weight: 600; text-transform: uppercase; }
+.badge-confirmed { background: var(--ok-bg); color: var(--confirmed); }
+.badge-rac { background: #fef3c7; color: var(--rac); }
+.badge-waitlisted { background: #fee2e2; color: var(--waitlisted); }
+.badge-cancelled { background: #e5e7eb; color: var(--cancelled); }
+.badge-provisional { background: #e0f2fe; color: #0369a1; }
+.filter-bar { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; margin-bottom: 1.25rem; }
+.filter-bar div { flex: 1 1 160px; }
+.filter-bar button, .filter-bar .button { margin-top: 0; align-self: flex-end; }

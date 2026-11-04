@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block title %}Administrator Reports | Railway Reservation{% endblock %}
+
+{% block content %}
+<section class="admin-reports">
+  <h1>Administrative Reports</h1>
+  <p class="muted">Generate real-time booking, occupancy, and revenue reports (Issue #18, TC-Admin-02).</p>
+
+  <!-- Filter Form -->
+  <form method="get" action="{{ url_for('admin_reports_page') }}" class="card filter-bar">
+    <div>
+      <label for="start_date">From Date</label>
+      <input type="date" id="start_date" name="start_date" value="{{ start_date }}">
+    </div>
+    <div>
+      <label for="end_date">To Date</label>
+      <input type="date" id="end_date" name="end_date" value="{{ end_date }}">
+    </div>
+    <button type="submit">Filter Reports</button>
+    <a href="{{ url_for('admin_reports_page') }}" class="button link" style="margin-left: 0.5rem;">Reset</a>
+  </form>
+
+  {% if report %}
+    <!-- Summary Metric Cards -->
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-title">Total Bookings</div>
+        <div class="metric-val">{{ report.summary.total_bookings }}</div>
+        <div class="metric-sub">
+          <span class="badge badge-confirmed">{{ report.summary.confirmed_bookings }} Confirmed</span>
+          <span class="badge badge-cancelled">{{ report.summary.cancelled_bookings }} Cancelled</span>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-title">Gross Revenue</div>
+        <div class="metric-val">₹{{ '%.2f'|format(report.summary.gross_revenue) }}</div>
+        <div class="metric-sub">{{ report.revenue.successful_payments_count }} successful payments</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-title">Total Refunds</div>
+        <div class="metric-val">₹{{ '%.2f'|format(report.summary.total_refunds) }}</div>
+        <div class="metric-sub">{{ report.revenue.refund_count }} cancellations refunded</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-title">Net Revenue</div>
+        <div class="metric-val">₹{{ '%.2f'|format(report.summary.net_revenue) }}</div>
+        <div class="metric-sub">Gross minus total refunds</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-title">Seat Occupancy</div>
+        <div class="metric-val">{{ '%.1f'|format(report.summary.overall_occupancy_percent) }}%</div>
+        <div class="metric-sub">{{ report.summary.total_allocated }} / {{ report.summary.total_capacity }} seats</div>
+      </div>
+    </div>
+
+    <!-- Occupancy Reports Section -->
+    <div class="card">
+      <h2>Train &amp; Schedule Occupancy</h2>
+      <p class="muted">Seat allocation and remaining capacity per train and schedule class.</p>
+
+      {% if report.occupancy.schedules %}
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Train</th>
+                <th>Route</th>
+                <th>Travel Date</th>
+                <th>Class</th>
+                <th>Capacity</th>
+                <th>Booked</th>
+                <th>Remaining</th>
+                <th>Occupancy %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in report.occupancy.schedules %}
+                <tr>
+                  <td><strong>{{ s.train_no }}</strong> - {{ s.train_name }}</td>
+                  <td>{{ s.source }} &rarr; {{ s.destination }}</td>
+                  <td>{{ s.travel_date }}</td>
+                  <td><strong>{{ s.class_code }}</strong></td>
+                  <td>{{ s.total_seats }}</td>
+                  <td>{{ s.allocated_seats }}</td>
+                  <td>{{ s.remaining_seats }}</td>
+                  <td>
+                    <strong>{{ '%.1f'|format(s.occupancy_percent) }}%</strong>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="empty">No train schedules found for the selected date range.</p>
+      {% endif %}
+    </div>
+
+    <!-- Booking Statistics Section -->
+    <div class="card">
+      <h2>Booking Statistics</h2>
+      <div style="display: flex; flex-wrap: wrap; gap: 1.5rem; margin-bottom: 1rem;">
+        <div><strong>Total Bookings:</strong> {{ report.bookings.total_bookings }}</div>
+        <div><strong>Confirmed:</strong> <span class="badge badge-confirmed">{{ report.bookings.confirmed }}</span></div>
+        <div><strong>Cancelled:</strong> <span class="badge badge-cancelled">{{ report.bookings.cancelled }}</span></div>
+        <div><strong>RAC:</strong> <span class="badge badge-rac">{{ report.bookings.rac }}</span></div>
+        <div><strong>Waitlisted:</strong> <span class="badge badge-waitlisted">{{ report.bookings.waitlisted }}</span></div>
+      </div>
+
+      <h3>Recent Booking Records</h3>
+      {% if report.bookings.recent_bookings %}
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>PNR</th>
+                <th>Passenger</th>
+                <th>Class</th>
+                <th>Status</th>
+                <th>Fare</th>
+                <th>Created At</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for b in report.bookings.recent_bookings %}
+                <tr>
+                  <td>#{{ b.id }}</td>
+                  <td>{{ b.pnr }}</td>
+                  <td>{{ b.passenger_name }}</td>
+                  <td>{{ b.class_code }}</td>
+                  <td>
+                    <span class="badge badge-{{ b.status.lower() }}">{{ b.status }}</span>
+                  </td>
+                  <td>₹{{ '%.2f'|format(b.fare) }}</td>
+                  <td class="muted">{{ b.created_at }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="empty">No bookings recorded for this period.</p>
+      {% endif %}
+    </div>
+
+    <!-- Audit Log Inspection Section (Issue #19) -->
+    <div class="card">
+      <h2>Booking Audit Trail Inspector</h2>
+      <p class="muted">Inspect timestamped lifecycle audit events for any booking (TC-Ops-01).</p>
+      <div style="display: flex; gap: 0.5rem; max-width: 400px; margin-bottom: 1rem;">
+        <input type="number" id="audit_booking_id" placeholder="Enter Booking ID (e.g. 1)" min="1">
+        <button type="button" id="fetch_audit_btn">Lookup Audit</button>
+      </div>
+
+      <div id="audit_results" hidden>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Audit ID</th>
+              <th>Action</th>
+              <th>User ID</th>
+              <th>Details</th>
+              <th>Timestamp</th>
+            </tr>
+          </thead>
+          <tbody id="audit_table_body"></tbody>
+        </table>
+      </div>
+      <p id="audit_msg" class="muted" style="margin-top: 0.5rem;"></p>
+    </div>
+
+  {% else %}
+    <div class="empty">
+      <p>No report data could be loaded. Please check your filter criteria.</p>
+    </div>
+  {% endif %}
+</section>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var btn = document.getElementById("fetch_audit_btn");
+  var input = document.getElementById("audit_booking_id");
+  var results = document.getElementById("audit_results");
+  var tbody = document.getElementById("audit_table_body");
+  var msg = document.getElementById("audit_msg");
+
+  if (!btn) return;
+
+  btn.addEventListener("click", async function () {
+    var bId = input.value.trim();
+    if (!bId || isNaN(bId)) {
+      msg.textContent = "Please enter a valid positive numeric booking ID.";
+      return;
+    }
+
+    msg.textContent = "Fetching audit trail...";
+    results.hidden = true;
+    tbody.innerHTML = "";
+
+    try {
+      var resp = await fetch("/api/admin/audit/" + encodeURIComponent(bId));
+      var data = await resp.json();
+
+      if (!resp.ok) {
+        msg.textContent = data.error || "Failed to retrieve audit trail.";
+        return;
+      }
+
+      if (data.length === 0) {
+        msg.textContent = "No audit events found for Booking ID #" + bId + ".";
+        return;
+      }
+
+      data.forEach(function (log) {
+        var tr = document.createElement("tr");
+        tr.innerHTML = "<td>#" + log.id + "</td>" +
+          "<td><span class='badge badge-confirmed'>" + log.action + "</span></td>" +
+          "<td>" + (log.user_id !== null ? log.user_id : "-") + "</td>" +
+          "<td>" + (log.details || "-") + "</td>" +
+          "<td>" + log.created_at + "</td>";
+        tbody.appendChild(tr);
+      });
+
+      results.hidden = false;
+      msg.textContent = "Showing " + data.length + " timestamped audit events for Booking ID #" + bId + ".";
+    } catch (e) {
+      msg.textContent = "Error contacting server.";
+    }
+  });
+});
+</script>
+{% endblock %}

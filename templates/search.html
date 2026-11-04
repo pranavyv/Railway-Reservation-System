@@ -31,7 +31,10 @@
         <p class="times">Departs {{ t.departure_time.strftime('%H:%M') }}, arrives {{ t.arrival_time.strftime('%H:%M') }}</p>
         <ul class="classes">
           {% for c in t.classes %}
-            <li><strong>{{ c.class_code }}</strong> Rs. {{ '%.2f'|format(c.fare) }}</li>
+            <li>
+              <strong>{{ c.class_code }}</strong> ₹{{ '%.2f'|format(c.fare) }}
+              <a href="{{ url_for('book_page', schedule_id=t.schedule_id, class=c.class_code) }}" class="button" style="padding: 0.2rem 0.55rem; font-size: 0.8rem; margin: 0 0 0 0.4rem; text-decoration: none;">Book</a>
+            </li>
           {% endfor %}
         </ul>
       </article>
