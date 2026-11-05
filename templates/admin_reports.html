@@ -1,10 +1,11 @@
+
 {% extends "base.html" %}
 {% block title %}Administrator Reports | Railway Reservation{% endblock %}
 
 {% block content %}
 <section class="admin-reports">
   <h1>Administrative Reports</h1>
-  <p class="muted">Generate real-time booking, occupancy, and revenue reports (Issue #18, TC-Admin-02).</p>
+  <p class="muted">Generate booking, occupancy, and revenue reports (Issue #18, TC-Admin-02).</p>
 
   <!-- Filter Form -->
   <form method="get" action="{{ url_for('admin_reports_page') }}" class="card filter-bar">
@@ -153,7 +154,7 @@
       <h2>Booking Audit Trail Inspector</h2>
       <p class="muted">Inspect timestamped lifecycle audit events for any booking (TC-Ops-01).</p>
       <div style="display: flex; gap: 0.5rem; max-width: 400px; margin-bottom: 1rem;">
-        <input type="number" id="audit_booking_id" placeholder="Enter Booking ID (e.g. 1)" min="1">
+        <input type="number" id="audit_booking_id" placeholder="Enter Booking ID (e.g. 1)" min="1" step="1">
         <button type="button" id="fetch_audit_btn">Lookup Audit</button>
       </div>
 
@@ -193,14 +194,16 @@ document.addEventListener("DOMContentLoaded", function () {
 
   btn.addEventListener("click", async function () {
     var bId = input.value.trim();
-    if (!bId || isNaN(bId)) {
+
+    // Accept only positive whole-number booking IDs.
+    if (!/^[1-9]\d*$/.test(bId)) {
       msg.textContent = "Please enter a valid positive numeric booking ID.";
       return;
     }
 
     msg.textContent = "Fetching audit trail...";
     results.hidden = true;
-    tbody.innerHTML = "";
+    tbody.replaceChildren();
 
     try {
       var resp = await fetch("/api/admin/audit/" + encodeURIComponent(bId));
@@ -211,6 +214,11 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
       }
 
+      if (!Array.isArray(data)) {
+        msg.textContent = "Unexpected response received from the server.";
+        return;
+      }
+
       if (data.length === 0) {
         msg.textContent = "No audit events found for Booking ID #" + bId + ".";
         return;
@@ -218,16 +226,32 @@ document.addEventListener("DOMContentLoaded", function () {
 
       data.forEach(function (log) {
         var tr = document.createElement("tr");
-        tr.innerHTML = "<td>#" + log.id + "</td>" +
-          "<td><span class='badge badge-confirmed'>" + log.action + "</span></td>" +
-          "<td>" + (log.user_id !== null ? log.user_id : "-") + "</td>" +
-          "<td>" + (log.details || "-") + "</td>" +
-          "<td>" + log.created_at + "</td>";
+
+        function addCell(value) {
+          var td = document.createElement("td");
+          td.textContent = value === null || value === undefined ? "-" : String(value);
+          tr.appendChild(td);
+        }
+
+        addCell("#" + log.id);
+
+        var actionCell = document.createElement("td");
+        var badge = document.createElement("span");
+        badge.className = "badge badge-confirmed";
+        badge.textContent = log.action || "-";
+        actionCell.appendChild(badge);
+        tr.appendChild(actionCell);
+
+        addCell(log.user_id);
+        addCell(log.details);
+        addCell(log.created_at);
+
         tbody.appendChild(tr);
       });
 
       results.hidden = false;
-      msg.textContent = "Showing " + data.length + " timestamped audit events for Booking ID #" + bId + ".";
+      msg.textContent = "Showing " + data.length +
+        " timestamped audit events for Booking ID #" + bId + ".";
     } catch (e) {
       msg.textContent = "Error contacting server.";
     }
