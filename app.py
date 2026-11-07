@@ -14,15 +14,19 @@ from flask import (
 )
 
 from config import Config
-from modules import admin, auth, booking, payment, search
+from modules import admin, auth, booking, payment, search, session_guard
 from modules.allocation import check_availability
 
 app = Flask(__name__)
 app.config.from_object(Config)
 
 from modules.pnr_routes import pnr_bp  # noqa: E402
+from modules.audit_routes import audit_bp  # noqa: E402
+from modules.rbac import admin_required  # noqa: E402
 
 app.register_blueprint(pnr_bp)
+app.register_blueprint(audit_bp)
+session_guard.register(app)  # PRJ-SR-004: end idle sessions
 
 
 def login_required(view):
@@ -33,25 +37,6 @@ def login_required(view):
                 return jsonify({"error": "Log in to continue."}), 401
             flash("Log in to continue.", "error")
             return redirect(url_for("login", next=request.path))
-        return view(*args, **kwargs)
-
-    return wrapped
-
-
-def admin_required(view):
-    """Enforce administrator role authorization on backend endpoints (Issue #18)."""
-    @wraps(view)
-    def wrapped(*args, **kwargs):
-        if "user_id" not in session:
-            if request.path.startswith("/api/"):
-                return jsonify({"error": "Authentication required."}), 401
-            flash("Log in to continue.", "error")
-            return redirect(url_for("login", next=request.path))
-        if session.get("role") != "admin":
-            if request.path.startswith("/api/"):
-                return jsonify({"error": "Administrator privilege required."}), 403
-            flash("Access denied: Administrator privileges required.", "error")
-            return render_template("dashboard.html"), 403
         return view(*args, **kwargs)
 
     return wrapped
@@ -86,10 +71,16 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        user = auth.authenticate(
-            request.form.get("email"),
-            request.form.get("password"),
-        )
+        try:
+            user = auth.authenticate(
+                request.form.get("email"),
+                request.form.get("password"),
+                max_attempts=app.config["MAX_FAILED_LOGINS"],
+                lock_minutes=app.config["LOCKOUT_MINUTES"],
+            )
+        except auth.AccountLocked as locked:  # RRS-F-003
+            flash(str(locked), "error")
+            return render_template("login.html", form=request.form), 429
 
         if user is None:
             flash("Email or password is incorrect.", "error")
@@ -99,6 +90,7 @@ def login():
         session["user_id"] = user["id"]
         session["user_name"] = user["name"]
         session["role"] = user["role"]
+        session_guard.touch()
 
         nxt = request.args.get("next", "")
         # Only allow same-site relative redirects.

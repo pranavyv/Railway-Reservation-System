@@ -15,7 +15,13 @@ Flask + Supabase (PostgreSQL). Layers: templates (HTML/CSS) -> `app.py` routes -
 | Path | Purpose |
 |---|---|
 | `app.py` | Flask routes |
-| `modules/` | Auth, Search (add Booking, Payment, Allocation, Admin here) |
+| `modules/` | Auth, Search, Booking, Payment, Allocation, plus `rbac.py` (`@admin_required`), `audit.py` (`log_action`) and `session_guard.py` (idle timeout) |
 | `repository/` | All SQL, one file per area |
 | `schema.sql`, `seed.sql` | Database tables and sample data |
 | `templates/`, `static/` | HTML and CSS |
+
+## Security helpers (Sprint 2)
+- Protect any admin-only route with `from modules.rbac import admin_required` and `@admin_required` (returns 401 when logged out, 403 for non-admins).
+- Record every admin action with `audit.log_action(session["user_id"], "ACTION_NAME", {"key": "value"})`. Passwords, card-like values and tokens in the details are redacted automatically.
+- Promote an account to admin in Supabase: `UPDATE users SET role = 'admin' WHERE email = '...';`
+- Run `sql/sprint2_pranav.sql` once if your database was created before the lockout and audit columns existed.

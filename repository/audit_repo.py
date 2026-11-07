@@ -24,7 +24,6 @@ def write_audit_log(cursor, user_id, action, booking_id, details=None):
     - details (contextual description)
     - created_at (timestamped event)
     """
-
     cursor.execute(
         """
         INSERT INTO audit_log (user_id, action, booking_id, details)
@@ -33,13 +32,11 @@ def write_audit_log(cursor, user_id, action, booking_id, details=None):
         """,
         (user_id, action, booking_id, details),
     )
-
     return cursor.fetchone()
 
 
 def get_booking_audit_logs(booking_id):
     """Retrieve timestamped audit events for a specific booking in chronological order."""
-
     with get_cursor() as cursor:
         cursor.execute(
             """
@@ -55,7 +52,6 @@ def get_booking_audit_logs(booking_id):
 
 def get_recent_audit_logs(limit=100, action=None):
     """Retrieve recent timestamped audit logs for administrative overview."""
-
     with get_cursor() as cursor:
         if action:
             cursor.execute(
@@ -79,3 +75,26 @@ def get_recent_audit_logs(limit=100, action=None):
                 (limit,),
             )
         return cursor.fetchall()
+
+
+# --- Admin-action audit trail (PRJ-SR-006, Pranav Sprint 2) -----------------
+def insert(user_id, action, details):
+    """Record one admin action in its own transaction (see modules/audit.py)."""
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            "INSERT INTO audit_log (user_id, action, details) VALUES (%s, %s, %s)",
+            (user_id, action, details),
+        )
+
+
+def recent(limit):
+    """Newest entries with the acting user's email, for the admin audit viewer."""
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT a.id, a.user_id, u.email AS user_email, a.action, a.booking_id, "
+            "a.details, a.created_at "
+            "FROM audit_log a LEFT JOIN users u ON u.id = a.user_id "
+            "ORDER BY a.created_at DESC, a.id DESC LIMIT %s",
+            (limit,),
+        )
+        return cur.fetchall()
