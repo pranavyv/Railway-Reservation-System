@@ -1,4 +1,3 @@
-
 """Flask backend API and web UI for the Railway Reservation System."""
 
 from functools import wraps
@@ -15,7 +14,7 @@ from flask import (
 )
 
 from config import Config
-from modules import auth, search, payment, session_guard
+from modules import admin, auth, booking, payment, search, session_guard
 from modules.allocation import check_availability
 
 app = Flask(__name__)
@@ -23,6 +22,7 @@ app.config.from_object(Config)
 
 from modules.pnr_routes import pnr_bp  # noqa: E402
 from modules.audit_routes import audit_bp  # noqa: E402
+from modules.rbac import admin_required  # noqa: E402
 
 app.register_blueprint(pnr_bp)
 app.register_blueprint(audit_bp)
@@ -33,6 +33,8 @@ def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if "user_id" not in session:
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "Log in to continue."}), 401
             flash("Log in to continue.", "error")
             return redirect(url_for("login", next=request.path))
         return view(*args, **kwargs)
@@ -189,6 +191,54 @@ def seat_availability():
         }), 500
 
 
+# Booking page
+@app.route("/book", methods=["GET"])
+@login_required
+def book_page():
+    schedule_id = request.args.get("schedule_id", "")
+    class_code = request.args.get("class", "")
+    return render_template(
+        "book.html",
+        schedule_id=schedule_id,
+        class_code=class_code,
+    )
+
+
+# Provisional booking API
+@app.route("/api/book", methods=["POST"])
+@login_required
+def create_booking_endpoint():
+    data = request.get_json(silent=True) or {}
+    schedule_id = data.get("schedule_id")
+    class_code = data.get("class_code")
+    name = data.get("passenger_name")
+    age = data.get("passenger_age")
+    gender = data.get("passenger_gender")
+    berth = data.get("berth_preference", "")
+
+    try:
+        result = booking.create_booking(
+            user_id=session["user_id"],
+            schedule_id=int(schedule_id) if str(schedule_id).isdigit() else 0,
+            class_code=class_code,
+            passenger_name=name,
+            passenger_age=age,
+            passenger_gender=gender,
+            berth_preference=berth,
+        )
+        return jsonify({
+            "booking_id": result["id"],
+            "fare": float(result["fare"]),
+            "held_until": str(result["held_until"]),
+        }), 201
+
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    except Exception:
+        app.logger.exception("Booking creation failed")
+        return jsonify({"error": "Unable to create provisional booking."}), 500
+
+
 # Mock payment API
 @app.route("/api/pay", methods=["POST"])
 @login_required
@@ -230,6 +280,74 @@ def pay_booking():
         return jsonify({
             "error": "Unable to process payment."
         }), 500
+
+
+# Admin reports page (Issue #18, TC-Admin-02)
+@app.route("/admin/reports", methods=["GET"])
+@admin_required
+def admin_reports_page():
+    start_date = request.args.get("start_date", "")
+    end_date = request.args.get("end_date", "")
+
+    report_data = None
+    error_msg = None
+
+    try:
+        report_data = admin.generate_report(start_date, end_date)
+    except ValueError as err:
+        error_msg = str(err)
+        flash(error_msg, "error")
+
+    return render_template(
+        "admin_reports.html",
+        report=report_data,
+        start_date=start_date,
+        end_date=end_date,
+        error=error_msg,
+    )
+
+
+# Admin reports JSON API (Issue #18)
+@app.route("/api/admin/reports", methods=["GET"])
+@admin_required
+def admin_reports_api():
+    start_date = request.args.get("start_date", "")
+    end_date = request.args.get("end_date", "")
+
+    try:
+        report_data = admin.generate_report(start_date, end_date)
+        return jsonify(report_data), 200
+    except ValueError as err:
+        return jsonify({"error": str(err)}), 400
+    except Exception:
+        app.logger.exception("Admin report generation failed")
+        return jsonify({"error": "Unable to generate admin report."}), 500
+
+
+# Admin audit trail API (Issue #19, TC-Ops-01)
+@app.route("/api/admin/audit/<int:booking_id>", methods=["GET"])
+@admin_required
+def admin_audit_api(booking_id):
+    try:
+        logs = admin.get_audit_trail(booking_id)
+        # Serialize datetime fields for JSON response
+        formatted_logs = [
+            {
+                "id": log["id"],
+                "user_id": log["user_id"],
+                "action": log["action"],
+                "booking_id": log["booking_id"],
+                "details": log["details"],
+                "created_at": str(log["created_at"]),
+            }
+            for log in logs
+        ]
+        return jsonify(formatted_logs), 200
+    except ValueError as err:
+        return jsonify({"error": str(err)}), 400
+    except Exception:
+        app.logger.exception("Admin audit lookup failed")
+        return jsonify({"error": "Unable to retrieve audit logs."}), 500
 
 
 if __name__ == "__main__":

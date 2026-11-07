@@ -2,6 +2,7 @@
 """Database operations for provisional railway bookings."""
 
 from db import get_cursor
+from repository.audit_repo import write_audit_log
 
 
 HOLD_MINUTES = 10
@@ -34,7 +35,7 @@ def create_provisional_booking(
         if seat_class is None:
             raise ValueError("Selected train class was not found.")
 
-        # Expired provisional bookings no longer occupy seats.
+        # Expire provisional bookings whose holds have ended.
         cursor.execute(
             """
             UPDATE bookings
@@ -43,10 +44,24 @@ def create_provisional_booking(
               AND class_code = %s
               AND status = 'PROVISIONAL'
               AND held_until <= NOW()
+            RETURNING id, user_id
             """,
             (schedule_id, class_code),
         )
 
+        expired_bookings = cursor.fetchall()
+
+        # Record an audit event for every expired booking.
+        for expired in expired_bookings:
+            write_audit_log(
+                cursor,
+                expired["user_id"],
+                "BOOKING_EXPIRED",
+                expired["id"],
+                "Provisional booking hold expired",
+            )
+
+        # Count currently allocated seats.
         cursor.execute(
             """
             SELECT COUNT(*) AS allocated
@@ -68,6 +83,7 @@ def create_provisional_booking(
         if allocated >= int(seat_class["total_seats"]):
             raise ValueError("Sorry, no seats are currently available.")
 
+        # Create a provisional booking.
         cursor.execute(
             """
             INSERT INTO bookings (
@@ -102,4 +118,15 @@ def create_provisional_booking(
             ),
         )
 
-        return cursor.fetchone()
+        booking = cursor.fetchone()
+
+        # Record booking creation in the same database transaction.
+        write_audit_log(
+            cursor,
+            user_id,
+            "BOOKING_CREATED",
+            booking["id"],
+            "Provisional booking created",
+        )
+
+        return booking

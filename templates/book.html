@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Book Ticket | Railway Reservation{% endblock %}
+
+{% block content %}
+<section class="booking-page narrow">
+  <h1>Book Train Ticket</h1>
+  <p class="muted">Enter passenger details to reserve a provisional seat hold (10 minutes).</p>
+
+  <div id="booking-box">
+    <form id="booking-form" class="card">
+      <div>
+        <label for="schedule_id">Schedule ID</label>
+        <input type="number" id="schedule_id" name="schedule_id" value="{{ schedule_id }}" required min="1">
+      </div>
+
+      <div>
+        <label for="class_code">Travel Class</label>
+        <select id="class_code" name="class_code" required style="width: 100%; padding: .6rem .7rem; border: 1px solid #6b7785; border-radius: 4px; background: #fff;">
+          <option value="SL" {% if class_code == 'SL' %}selected{% endif %}>Sleeper (SL)</option>
+          <option value="3A" {% if class_code == '3A' %}selected{% endif %}>AC 3 Tier (3A)</option>
+          <option value="2A" {% if class_code == '2A' %}selected{% endif %}>AC 2 Tier (2A)</option>
+        </select>
+      </div>
+
+      <div>
+        <label for="passenger_name">Passenger Name</label>
+        <input type="text" id="passenger_name" name="passenger_name" placeholder="Full Name" required maxlength="100">
+      </div>
+
+      <div>
+        <label for="passenger_age">Passenger Age</label>
+        <input type="number" id="passenger_age" name="passenger_age" min="1" max="120" placeholder="Age" required>
+      </div>
+
+      <div>
+        <label for="passenger_gender">Passenger Gender</label>
+        <select id="passenger_gender" name="passenger_gender" required style="width: 100%; padding: .6rem .7rem; border: 1px solid #6b7785; border-radius: 4px; background: #fff;">
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+
+      <div>
+        <label for="berth_preference">Berth Preference (Optional)</label>
+        <select id="berth_preference" name="berth_preference" style="width: 100%; padding: .6rem .7rem; border: 1px solid #6b7785; border-radius: 4px; background: #fff;">
+          <option value="">No Preference</option>
+          <option value="Lower">Lower</option>
+          <option value="Middle">Middle</option>
+          <option value="Upper">Upper</option>
+          <option value="Side Lower">Side Lower</option>
+          <option value="Side Upper">Side Upper</option>
+        </select>
+      </div>
+
+      <button type="submit">Reserve Provisional Hold</button>
+    </form>
+  </div>
+
+  <div id="booking-msg" role="status" aria-live="polite"></div>
+
+  <!-- Payment Step (Initially Hidden) -->
+  <div id="payment-box" class="card" hidden>
+    <h2>Payment Processing (Issue #15)</h2>
+    <p>Your provisional seat hold is active. Please complete payment to confirm your booking.</p>
+    <p><strong>Booking ID:</strong> #<span id="pay_booking_id"></span></p>
+    <p><strong>Fare to Pay:</strong> ₹<span id="pay_fare"></span></p>
+    <p class="muted">Seat held until: <span id="pay_held_until"></span></p>
+
+    <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1rem;">
+      <button type="button" id="pay_success_btn" style="background: var(--ok-ink);">Pay Now (SUCCESS)</button>
+      <button type="button" id="pay_fail_btn" style="background: var(--err-ink);">Simulate Payment Failure (FAILED)</button>
+      <button type="button" id="pay_timeout_btn" style="background: #7a4b00;">Simulate Payment Timeout (TIMEOUT)</button>
+    </div>
+  </div>
+
+  <!-- Confirmation / Outcome Step (Initially Hidden) -->
+  <div id="confirmation-box" class="card" hidden>
+    <div id="outcome-content"></div>
+  </div>
+</section>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var bForm = document.getElementById("booking-form");
+  var bMsg = document.getElementById("booking-msg");
+  var pBox = document.getElementById("payment-box");
+  var cBox = document.getElementById("confirmation-box");
+  var currentBookingId = null;
+
+  function flash(text, isOk) {
+    bMsg.className = "flash " + (isOk ? "success" : "error");
+    bMsg.textContent = text;
+  }
+
+  bForm.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    bMsg.textContent = "";
+
+    var payload = {
+      schedule_id: document.getElementById("schedule_id").value,
+      class_code: document.getElementById("class_code").value,
+      passenger_name: document.getElementById("passenger_name").value,
+      passenger_age: document.getElementById("passenger_age").value,
+      passenger_gender: document.getElementById("passenger_gender").value,
+      berth_preference: document.getElementById("berth_preference").value
+    };
+
+    try {
+      var res = await fetch("/api/book", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload)
+      });
+      var data = await res.json();
+
+      if (!res.ok) {
+        flash(data.error || "Failed to create provisional booking.", false);
+        return;
+      }
+
+      currentBookingId = data.booking_id;
+      flash("Provisional booking #" + data.booking_id + " reserved! Held for 10 minutes.", true);
+
+      document.getElementById("booking-box").hidden = true;
+      document.getElementById("pay_booking_id").textContent = data.booking_id;
+      document.getElementById("pay_fare").textContent = data.fare.toFixed(2);
+      document.getElementById("pay_held_until").textContent = data.held_until;
+      pBox.hidden = false;
+
+    } catch (err) {
+      flash("Network error while creating provisional booking.", false);
+    }
+  });
+
+  async function handlePayment(outcome) {
+    if (!currentBookingId) return;
+
+    try {
+      var res = await fetch("/api/pay", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          booking_id: currentBookingId,
+          payment_outcome: outcome
+        })
+      });
+      var data = await res.json();
+      pBox.hidden = true;
+      cBox.hidden = false;
+
+      var outDiv = document.getElementById("outcome-content");
+      if (res.ok && data.status === "SUCCESS") {
+        outDiv.innerHTML = "<h2 style='color: var(--ok-ink);'>Booking Confirmed!</h2>" +
+          "<p>Your payment was successful and seat has been confirmed.</p>" +
+          "<p><strong>PNR:</strong> " + (data.pnr || "Assigned") + "</p>" +
+          "<p><strong>Transaction Ref:</strong> " + data.transaction_ref + "</p>" +
+          "<a class='button' href='/pnr'>Check PNR Status</a>";
+      } else {
+        outDiv.innerHTML = "<h2 style='color: var(--err-ink);'>Payment " + data.status + "</h2>" +
+          "<p><strong>AC-RRS-F-031 Verified:</strong> Provisional booking hold has been released back to availability.</p>" +
+          "<p>Booking status is now <strong>CANCELLED</strong>. The held seat is immediately freed for other passengers.</p>" +
+          "<a class='button' href='/availability'>Verify Seat Availability</a>";
+      }
+    } catch (err) {
+      flash("Network error processing payment.", false);
+    }
+  }
+
+  document.getElementById("pay_success_btn").addEventListener("click", function () {
+    handlePayment("SUCCESS");
+  });
+  document.getElementById("pay_fail_btn").addEventListener("click", function () {
+    handlePayment("FAILED");
+  });
+  document.getElementById("pay_timeout_btn").addEventListener("click", function () {
+    handlePayment("TIMEOUT");
+  });
+});
+</script>
+{% endblock %}
