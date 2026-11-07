@@ -1,9 +1,12 @@
+from datetime import datetime, timedelta, timezone
+
 from modules import auth
 
 
 class FakeUserRepo:
-    def __init__(self):
+    def __init__(self, now=None):
         self.users = {}
+        self.now = now  # lets lockout tests control the clock
 
     def create_user(self, name, email, password_hash, role="passenger"):
         if email in self.users:
@@ -14,11 +17,26 @@ class FakeUserRepo:
             "email": email,
             "password_hash": password_hash,
             "role": role,
+            "failed_attempts": 0,
+            "locked_until": None,
         }
         return self.users[email]["id"]
 
     def get_by_email(self, email):
         return self.users.get(email)
+
+    def record_failed_login(self, user_id, max_attempts, lock_minutes):
+        user = next(u for u in self.users.values() if u["id"] == user_id)
+        user["failed_attempts"] += 1
+        if user["failed_attempts"] >= max_attempts:
+            user["failed_attempts"] = 0
+            user["locked_until"] = (self.now or datetime.now(timezone.utc)) + timedelta(minutes=lock_minutes)
+        return {"failed_attempts": user["failed_attempts"], "locked_until": user["locked_until"]}
+
+    def reset_failed_logins(self, user_id):
+        user = next(u for u in self.users.values() if u["id"] == user_id)
+        user["failed_attempts"] = 0
+        user["locked_until"] = None
 
 
 def test_valid_registration_creates_account():  # TC-Auth-01
