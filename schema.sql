@@ -84,10 +84,13 @@ CREATE TABLE IF NOT EXISTS cancellation_policy (
 CREATE TABLE IF NOT EXISTS audit_log (
     id         INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id    INTEGER REFERENCES users(id),
+    booking_id INTEGER REFERENCES bookings(id),
     action     TEXT        NOT NULL,
     details    TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_booking ON audit_log (booking_id, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_trains_route      ON trains (lower(source), lower(destination));
 CREATE INDEX IF NOT EXISTS idx_schedules_date    ON schedules (travel_date);

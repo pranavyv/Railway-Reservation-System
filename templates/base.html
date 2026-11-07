@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="en">
 <head>
@@ -15,9 +14,21 @@
     </a>
 
     <nav>
-      <a href="{{ url_for('availability_page') }}">
-        Seat Availability
-      </a>
+      {% if session.get('user_id') %}
+        <a href="{{ url_for('search_page') }}">Search</a>
+        <a href="{{ url_for('availability_page') }}">Seat Availability</a>
+        <a href="{{ url_for('pnr.pnr_page') }}">PNR Status</a>
+        {% if session.get('role') == 'admin' %}
+          <a href="{{ url_for('admin_reports_page') }}" class="admin-badge">Admin Reports</a>
+        {% endif %}
+        <form class="inline" method="post" action="{{ url_for('logout') }}">
+          <button type="submit" class="link topbar-link">Logout ({{ session.get('user_name') }})</button>
+        </form>
+      {% else %}
+        <a href="{{ url_for('availability_page') }}">Seat Availability</a>
+        <a href="{{ url_for('login') }}">Login</a>
+        <a href="{{ url_for('register') }}">Register</a>
+      {% endif %}
     </nav>
   </header>
 
