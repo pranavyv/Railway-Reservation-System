@@ -25,3 +25,11 @@ Flask + Supabase (PostgreSQL). Layers: templates (HTML/CSS) -> `app.py` routes -
 - Record every admin action with `audit.log_action(session["user_id"], "ACTION_NAME", {"key": "value"})`. Passwords, card-like values and tokens in the details are redacted automatically.
 - Promote an account to admin in Supabase: `UPDATE users SET role = 'admin' WHERE email = '...';`
 - Run `sql/sprint2_pranav.sql` once if your database was created before the lockout and audit columns existed.
+
+
+## Sprint 2: seat promotion, train admin, HTTPS and uptime
+- **Waitlist/RAC promotion (RRS-F-051):** a cancellation moves the earliest RAC passenger to CONFIRMED (with a PNR) and refills RAC from the waiting list, in booking order. Each move is audited as `BOOKING_PROMOTED`.
+- **Train and schedule admin (RRS-F-060):** admins use `/admin/trains` (API under `/api/admin/trains`). Search shows changes straight away. A train with bookings is hidden instead of deleted.
+- **HTTPS only (PRJ-SR-001):** `bash scripts/make_dev_cert.sh`, then `REQUIRE_HTTPS=1 python run_https.py` and open https://localhost:5000. Behind a proxy that ends TLS, set `REQUIRE_HTTPS=1` and `TRUST_PROXY=1`.
+- **Uptime (RRS-NF-002):** `/health` for checks; `python scripts/uptime_probe.py --url http://localhost:5000/health` writes `logs/uptime.csv`; admins see the percentage at `/api/admin/availability`.
+- **Usability (RRS-NF-005):** skip link, labelled fields, status badges with a symbol. Manual walkthrough: `docs/TC-UX-01_usability_walkthrough.md`.

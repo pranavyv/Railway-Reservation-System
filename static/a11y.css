@@ -1,0 +1,43 @@
+/* Accessibility and usability layer (RRS-NF-005). Loaded after style.css. */
+
+.skip-link { position: absolute; left: .5rem; top: -4rem; z-index: 100; padding: .6rem 1rem; background: #fff; color: #14213d; font-weight: 700; border: 3px solid #f2a900; border-radius: 4px; }
+.skip-link:focus { top: .5rem; }
+main:focus { outline: none; }
+
+/* Comfortable touch and click targets */
+button, .button, input, select, textarea { min-height: 44px; }
+input[type="checkbox"], input[type="radio"] { min-height: 0; }
+select, textarea { width: 100%; padding: .6rem .7rem; font: inherit; border: 1px solid #6b7785; border-radius: 4px; background: #fff; color: var(--ink); }
+button.link { min-height: 0; padding: .35rem .25rem; }
+fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 1rem 0 0; padding: .5rem 1rem 1rem; }
+legend { font-weight: 600; padding: 0 .35rem; }
+.class-row { display: grid; gap: 0 1rem; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.admin-trains .card h3 { margin-bottom: .35rem; }
+
+/* Booking status badges: colour AND a symbol AND text, never colour alone.
+   Every foreground/background pair below is checked at 4.5:1 or better by tests/test_usability.py */
+:root {
+  --b-confirmed-bg: #d8f0de;   --b-confirmed-fg: #0d4a1f;
+  --b-rac-bg: #fef3c7;         --b-rac-fg: #7a4b00;
+  --b-waitlisted-bg: #fee2e2;  --b-waitlisted-fg: #7a1710;
+  --b-cancelled-bg: #e5e7eb;   --b-cancelled-fg: #3d4752;
+  --b-provisional-bg: #e0f2fe; --b-provisional-fg: #0b4f6c;
+}
+.badge { display: inline-block; padding: .2rem .5rem; border-radius: 4px; border: 1px solid currentColor; font-size: .82rem; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+.badge-confirmed   { background: var(--b-confirmed-bg);   color: var(--b-confirmed-fg); }
+.badge-rac         { background: var(--b-rac-bg);         color: var(--b-rac-fg); }
+.badge-waitlisted  { background: var(--b-waitlisted-bg);  color: var(--b-waitlisted-fg); }
+.badge-cancelled   { background: var(--b-cancelled-bg);   color: var(--b-cancelled-fg); }
+.badge-provisional { background: var(--b-provisional-bg); color: var(--b-provisional-fg); }
+.badge-confirmed::before   { content: "\2713\00a0"; content: "\2713\00a0" / ""; }
+.badge-rac::before         { content: "\25D0\00a0"; content: "\25D0\00a0" / ""; }
+.badge-waitlisted::before  { content: "\2026\00a0"; content: "\2026\00a0" / ""; }
+.badge-cancelled::before   { content: "\2715\00a0"; content: "\2715\00a0" / ""; }
+.badge-provisional::before { content: "\2022\00a0"; content: "\2022\00a0" / ""; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+@media (forced-colors: active) {
+  .badge { border: 2px solid CanvasText; }
+}

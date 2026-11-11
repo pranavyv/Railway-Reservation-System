@@ -4,3 +4,7 @@ __pycache__/
 .pytest_cache/
 venv/
 .venv/
+
+# Yashas Sprint 2: dev TLS key and uptime logs
+certs/
+logs/

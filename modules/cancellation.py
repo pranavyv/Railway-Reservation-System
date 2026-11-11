@@ -114,6 +114,21 @@ def cancel_booking(pnr, user_id, confirmed, role="passenger", repo=None, now=Non
     ):
         raise AlreadyCancelled("This ticket is already cancelled.")
 
+    # RRS-F-051: the freed seat moves the next RAC / waitlisted passenger up. The cancellation
+    # is already saved and the promotion plan only reads current state, so a failure here is
+    # logged and can never undo or repeat the cancel.
+    if hasattr(r, "rebalance_seats"):
+        try:
+            from modules import promotion
+
+            promotion.rebalance_after_cancel(booking["id"], user_id, repo=r)
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "Waitlist promotion failed after cancelling booking %s", booking["id"]
+            )
+
     return {
         "pnr": booking["pnr"],
         "status": "CANCELLED",
