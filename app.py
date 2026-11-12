@@ -21,10 +21,17 @@ app = Flask(__name__)
 app.config.from_object(Config)
 
 from modules.pnr_routes import pnr_bp  # noqa: E402
+from modules.train_admin_routes import trains_admin_bp  # noqa: E402
+from modules.ops_routes import ops_bp  # noqa: E402
+from modules import monitoring, transport_security  # noqa: E402
 from modules.audit_routes import audit_bp  # noqa: E402
 from modules.rbac import admin_required  # noqa: E402
 
 app.register_blueprint(pnr_bp)
+transport_security.register(app)  # PRJ-SR-001: refuse plain HTTP when REQUIRE_HTTPS=1
+monitoring.register(app)  # RRS-NF-002: request and error counters
+app.register_blueprint(trains_admin_bp)  # RRS-F-060
+app.register_blueprint(ops_bp)  # /health and admin availability report
 app.register_blueprint(audit_bp)
 session_guard.register(app)  # PRJ-SR-004: end idle sessions
 

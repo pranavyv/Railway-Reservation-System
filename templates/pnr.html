@@ -51,7 +51,14 @@
       var dt = document.createElement("dt");
       dt.textContent = f[1];
       var dd = document.createElement("dd");
-      dd.textContent = view[f[0]];
+      if (f[0] === "status") {
+        var badge = document.createElement("span");
+        badge.className = "badge badge-" + String(view.status).toLowerCase();
+        badge.textContent = view.status;
+        dd.appendChild(badge);
+      } else {
+        dd.textContent = view[f[0]];
+      }
       details.appendChild(dt);
       details.appendChild(dd);
     });

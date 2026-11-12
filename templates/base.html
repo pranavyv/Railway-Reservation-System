@@ -5,9 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Railway Reservation{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='a11y.css') }}">
 </head>
 
 <body>
+  <a class="skip-link" href="#main">Skip to main content</a>
   <header class="topbar">
     <a class="brand" href="{{ url_for('home') }}">
       Railway Reservation
@@ -20,6 +22,7 @@
         <a href="{{ url_for('pnr.pnr_page') }}">PNR Status</a>
         {% if session.get('role') == 'admin' %}
           <a href="{{ url_for('admin_reports_page') }}" class="admin-badge">Admin Reports</a>
+          <a href="{{ url_for('trains_admin.trains_page') }}" class="admin-badge">Manage Trains</a>
         {% endif %}
         <form class="inline" method="post" action="{{ url_for('logout') }}">
           <button type="submit" class="link topbar-link">Logout ({{ session.get('user_name') }})</button>
@@ -32,7 +35,7 @@
     </nav>
   </header>
 
-  <main>
+  <main id="main" tabindex="-1">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for category, message in messages %}
         <p class="flash {{ category }}" role="alert">

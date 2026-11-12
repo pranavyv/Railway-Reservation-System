@@ -57,3 +57,6 @@ def cancel_and_record_refund(booking_id, amount, percent, actor_user_id):
             )
 
     return cancelled
+
+
+from repository.promotion_repo import rebalance_seats  # noqa: E402,F401  (RRS-F-051)

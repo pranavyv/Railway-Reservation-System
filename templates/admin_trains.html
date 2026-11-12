@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% block title %}Manage trains and schedules | Railway Reservation{% endblock %}
+{% block content %}
+<section class="admin-trains">
+  <h1>Manage trains and schedules</h1>
+  <p class="muted">Changes appear in train search straight away and are recorded in the audit log.</p>
+  <p id="tm-message" role="status" aria-live="polite"></p>
+
+  <form id="train-form" class="card" novalidate>
+    <h2 id="train-form-title">Add a train</h2>
+    <input type="hidden" id="train-id" value="">
+    <label for="train_no">Train number</label>
+    <input id="train_no" maxlength="10" autocomplete="off" required>
+    <label for="train_name">Train name</label>
+    <input id="train_name" maxlength="80" autocomplete="off" required>
+    <label for="train_source">Source station</label>
+    <input id="train_source" maxlength="80" autocomplete="off" required>
+    <label for="train_destination">Destination station</label>
+    <input id="train_destination" maxlength="80" autocomplete="off" required>
+    <label for="train_departure">Departure time</label>
+    <input id="train_departure" type="time" value="06:00" required>
+    <label for="train_arrival">Arrival time</label>
+    <input id="train_arrival" type="time" value="12:00" required>
+    <button type="submit" id="train-submit">Add train</button>
+    <button type="button" id="train-cancel" class="link" hidden>Cancel editing</button>
+  </form>
+
+  <form id="schedule-form" class="card" novalidate>
+    <h2 id="schedule-form-title">Add a schedule</h2>
+    <input type="hidden" id="schedule-id" value="">
+    <label for="schedule_train">Train</label>
+    <select id="schedule_train" required></select>
+    <label for="schedule_date">Travel date</label>
+    <input id="schedule_date" type="date" required>
+    <fieldset>
+      <legend>Seats and fare per class (leave a class blank to skip it)</legend>
+      {% for code, seats, fare in [("SL", 72, 350), ("3A", 64, 900), ("2A", 46, 1300)] %}
+      <div class="class-row">
+        <label for="seats_{{ code }}">{{ code }} seats</label>
+        <input id="seats_{{ code }}" type="number" min="1" max="1000" value="{{ seats }}" data-class="{{ code }}" data-kind="seats">
+        <label for="fare_{{ code }}">{{ code }} fare (Rs)</label>
+        <input id="fare_{{ code }}" type="number" min="1" step="0.01" value="{{ fare }}" data-class="{{ code }}" data-kind="fare">
+      </div>
+      {% endfor %}
+    </fieldset>
+    <button type="submit" id="schedule-submit">Add schedule</button>
+    <button type="button" id="schedule-cancel" class="link" hidden>Cancel editing</button>
+  </form>
+
+  <h2>Trains</h2>
+  <div id="train-list"><p class="muted">Loading trains...</p></div>
+</section>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var msg = $("tm-message");
+  var trains = [];
+
+  function say(text, ok) {
+    msg.textContent = text;
+    msg.className = "flash " + (ok ? "success" : "error");
+  }
+
+  async function api(method, url, body) {
+    var options = { method: method, headers: {} };
+    if (body !== undefined) {
+      options.headers["Content-Type"] = "application/json";
+      options.body = JSON.stringify(body);
+    }
+    var res = await fetch(url, options);
+    var data = {};
+    try { data = await res.json(); } catch (e) { /* empty body */ }
+    if (!res.ok) { throw new Error(data.error || "Request failed."); }
+    return data;
+  }
+
+  function el(tag, text, className) {
+    var node = document.createElement(tag);
+    if (text !== undefined) { node.textContent = text; }
+    if (className) { node.className = className; }
+    return node;
+  }
+
+  function button(label, handler, ariaLabel) {
+    var b = el("button", label, "link");
+    b.type = "button";
+    if (ariaLabel) { b.setAttribute("aria-label", ariaLabel); }
+    b.addEventListener("click", handler);
+    return b;
+  }
+
+  function resetTrainForm() {
+    $("train-id").value = "";
+    ["train_no", "train_name", "train_source", "train_destination"].forEach(function (id) { $(id).value = ""; });
+    $("train_departure").value = "06:00";
+    $("train_arrival").value = "12:00";
+    $("train-form-title").textContent = "Add a train";
+    $("train-submit").textContent = "Add train";
+    $("train-cancel").hidden = true;
+  }
+
+  function resetScheduleForm() {
+    $("schedule-id").value = "";
+    $("schedule_train").disabled = false;
+    $("schedule_date").disabled = false;
+    $("schedule-form-title").textContent = "Add a schedule";
+    $("schedule-submit").textContent = "Add schedule";
+    $("schedule-cancel").hidden = true;
+  }
+
+  function editTrain(t) {
+    $("train-id").value = t.id;
+    $("train_no").value = t.train_no;
+    $("train_name").value = t.name;
+    $("train_source").value = t.source;
+    $("train_destination").value = t.destination;
+    $("train_departure").value = t.departure_time;
+    $("train_arrival").value = t.arrival_time;
+    $("train-form-title").textContent = "Edit train " + t.train_no;
+    $("train-submit").textContent = "Save changes";
+    $("train-cancel").hidden = false;
+    $("train_no").focus();
+  }
+
+  function editSchedule(t, s) {
+    $("schedule-id").value = s.id;
+    $("schedule_train").value = t.id;
+    $("schedule_train").disabled = true;
+    $("schedule_date").value = s.travel_date;
+    $("schedule_date").disabled = true;
+    document.querySelectorAll("[data-class]").forEach(function (input) { input.value = ""; });
+    s.classes.forEach(function (c) {
+      $("seats_" + c.class_code).value = c.total_seats;
+      $("fare_" + c.class_code).value = c.fare;
+    });
+    $("schedule-form-title").textContent = "Edit schedule for " + t.train_no + " on " + s.travel_date;
+    $("schedule-submit").textContent = "Save schedule";
+    $("schedule-cancel").hidden = false;
+    $("schedule_train").scrollIntoView();
+    $("seats_SL").focus();
+  }
+
+  function render() {
+    var select = $("schedule_train");
+    var chosen = select.value;
+    select.textContent = "";
+    trains.forEach(function (t) {
+      var option = el("option", t.train_no + " - " + t.name);
+      option.value = t.id;
+      select.appendChild(option);
+    });
+    if (chosen) { select.value = chosen; }
+
+    var list = $("train-list");
+    list.textContent = "";
+    if (!trains.length) { list.appendChild(el("p", "No trains yet. Add one above.", "empty")); return; }
+
+    trains.forEach(function (t) {
+      var card = el("article", undefined, "card train");
+      var title = el("h3", t.train_no + " - " + t.name + " ");
+      title.appendChild(el("span", t.active ? "Active" : "Hidden from search", "badge " + (t.active ? "badge-confirmed" : "badge-cancelled")));
+      card.appendChild(title);
+      card.appendChild(el("p", t.source + " to " + t.destination + ", departs " + t.departure_time + ", arrives " + t.arrival_time));
+
+      var actions = el("p");
+      actions.appendChild(button("Edit train", function () { editTrain(t); }, "Edit train " + t.train_no));
+      actions.appendChild(document.createTextNode(" "));
+      actions.appendChild(button("Remove train", function () { removeTrain(t); }, "Remove train " + t.train_no));
+      card.appendChild(actions);
+
+      if (!t.schedules.length) { card.appendChild(el("p", "No schedules yet.", "muted")); }
+      t.schedules.forEach(function (s) {
+        var line = el("p");
+        var classes = s.classes.map(function (c) { return c.class_code + ": " + c.total_seats + " seats, Rs " + c.fare.toFixed(2); }).join("; ");
+        line.appendChild(el("strong", s.travel_date + " "));
+        line.appendChild(document.createTextNode(classes + " "));
+        line.appendChild(button("Edit schedule", function () { editSchedule(t, s); }, "Edit schedule on " + s.travel_date + " for " + t.train_no));
+        line.appendChild(document.createTextNode(" "));
+        line.appendChild(button("Remove schedule", function () { removeSchedule(t, s); }, "Remove schedule on " + s.travel_date + " for " + t.train_no));
+        card.appendChild(line);
+      });
+      list.appendChild(card);
+    });
+  }
+
+  async function load() {
+    try {
+      trains = (await api("GET", "/api/admin/trains")).trains;
+      render();
+    } catch (e) { say(e.message, false); }
+  }
+
+  async function removeTrain(t) {
+    if (!confirm("Remove train " + t.train_no + "? If it has bookings it is hidden from search instead.")) { return; }
+    try {
+      var out = await api("DELETE", "/api/admin/trains/" + t.id);
+      say(out.result === "deleted" ? "Train removed." : "Train has bookings, so it is now hidden from search.", true);
+      load();
+    } catch (e) { say(e.message, false); }
+  }
+
+  async function removeSchedule(t, s) {
+    if (!confirm("Remove the " + s.travel_date + " schedule of train " + t.train_no + "?")) { return; }
+    try {
+      await api("DELETE", "/api/admin/schedules/" + s.id);
+      say("Schedule removed.", true);
+      load();
+    } catch (e) { say(e.message, false); }
+  }
+
+  $("train-form").addEventListener("submit", async function (event) {
+    event.preventDefault();
+    var body = {
+      train_no: $("train_no").value, name: $("train_name").value,
+      source: $("train_source").value, destination: $("train_destination").value,
+      departure_time: $("train_departure").value, arrival_time: $("train_arrival").value
+    };
+    var id = $("train-id").value;
+    try {
+      if (id) { await api("PUT", "/api/admin/trains/" + id, body); say("Train updated.", true); }
+      else { await api("POST", "/api/admin/trains", body); say("Train added.", true); }
+      resetTrainForm();
+      load();
+    } catch (e) { say(e.message, false); }
+  });
+
+  $("schedule-form").addEventListener("submit", async function (event) {
+    event.preventDefault();
+    var classes = [];
+    ["SL", "3A", "2A"].forEach(function (code) {
+      var seats = $("seats_" + code).value, fare = $("fare_" + code).value;
+      if (seats !== "" || fare !== "") {
+        classes.push({ class_code: code, total_seats: seats === "" ? null : Number(seats), fare: fare === "" ? null : Number(fare) });
+      }
+    });
+    var id = $("schedule-id").value;
+    try {
+      if (id) { await api("PUT", "/api/admin/schedules/" + id, { classes: classes }); say("Schedule updated.", true); }
+      else {
+        await api("POST", "/api/admin/trains/" + $("schedule_train").value + "/schedules",
+                  { travel_date: $("schedule_date").value, classes: classes });
+        say("Schedule added.", true);
+      }
+      resetScheduleForm();
+      load();
+    } catch (e) { say(e.message, false); }
+  });
+
+  $("train-cancel").addEventListener("click", resetTrainForm);
+  $("schedule-cancel").addEventListener("click", resetScheduleForm);
+  load();
+});
+</script>
+{% endblock %}
