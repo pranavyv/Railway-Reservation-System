@@ -8,3 +8,5 @@ venv/
 # Yashas Sprint 2: dev TLS key and uptime logs
 certs/
 logs/
+
+.coverage
