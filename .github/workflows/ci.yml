@@ -1,35 +1,158 @@
 name: CI-CD
+
 on:
   pull_request:
   push:
     branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.11"
+  INTEGRATION_TESTS: tests/test_payment.py tests/test_payment_repo.py tests/test_promotion.py tests/test_audit_repo.py tests/test_admin_routes.py
 
 jobs:
-  test:
+  # ---------- CI ----------
+  lint:
+    name: 1. Lint and syntax check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install flake8
+      - name: Stop on syntax errors and undefined names
+        run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=.git,venv,.venv
+
+  unit-tests:
+    name: 2. Unit tests
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements.txt pytest
+      - name: Run unit tests
+        run: |
+          IGNORES=""
+          for f in $INTEGRATION_TESTS; do IGNORES="$IGNORES --ignore=$f"; done
+          pytest tests $IGNORES -v --junitxml=unit-tests.xml
+      - name: Unit test summary
+        if: always()
+        run: python scripts/test_summary.py unit-tests.xml "Unit test summary"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-results
+          path: unit-tests.xml
+
+  integration-tests:
+    name: 3. Integration tests
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements.txt pytest
+      - name: Run integration tests
+        run: pytest $INTEGRATION_TESTS -v --junitxml=integration-tests.xml
+      - name: Integration test summary
+        if: always()
+        run: python scripts/test_summary.py integration-tests.xml "Integration test summary"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-results
+          path: integration-tests.xml
+
+  coverage:
+    name: 4. Coverage report
+    needs: [unit-tests, integration-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
       - run: pip install -r requirements.txt pytest coverage
-      - run: coverage run -m pytest -v
-      - run: coverage report
+      - run: coverage run -m pytest -q
+      - name: Coverage summary
+        run: |
+          echo "## Coverage report" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          coverage report --fail-under=70 | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
       - run: coverage xml
       - uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: coverage.xml
 
-  package:
-    needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  # ---------- CD ----------
+  build:
+    name: 5. Build release package
+    needs: coverage
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: zip -r rrs-release.zip . -x ".git/*" "tests/*" "docs/reports/*"
+      - name: Package the application
+        run: |
+          zip -r rrs-release.zip . -x ".git/*" ".github/*" "tests/*" "docs/reports/*" "*.pyc" "__pycache__/*"
+          ls -lh rrs-release.zip
       - uses: actions/upload-artifact@v4
         with:
           name: rrs-release
           path: rrs-release.zip
+
+  deploy-staging:
+    name: 6. Deploy to staging
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: rrs-release
+      - name: Verify the package is complete
+        run: |
+          unzip -q rrs-release.zip -d release
+          test -f release/app.py && test -f release/requirements.txt && test -d release/templates
+          python3 -m compileall -q release
+          echo "Package verified."
+      - name: Deploy
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
+        run: |
+          if [ -n "$DEPLOY_HOOK_URL" ]; then
+            curl -fsS -X POST "$DEPLOY_HOOK_URL"
+            echo "Deploy triggered." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No DEPLOY_HOOK_URL secret set: package verified, deployment skipped." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+  release:
+    name: 7. Publish GitHub release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: rrs-release
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" rrs-release.zip --repo "${{ github.repository }}" --title "RRS ${{ github.ref_name }}" --generate-notes
